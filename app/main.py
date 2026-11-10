@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, status
+from fastapi import Depends, FastAPI, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -32,6 +32,8 @@ def create_measurement(payload: schemas.MeasurementIn, db: Session = Depends(get
         measured_at=payload.measured_at,
     )
     db.add(measurement)
+    db.flush()
+    db.add(models.OutboxMessage(measurement_id=measurement.id))
     db.commit()
     db.refresh(measurement)
     return measurement
@@ -50,4 +52,20 @@ def list_measurements(
     query = select(models.Measurement).order_by(models.Measurement.id.desc()).limit(limit)
     if patient_ref:
         query = query.where(models.Measurement.patient_ref == patient_ref)
+    return db.scalars(query).all()
+
+
+@app.get(
+    "/outbox",
+    response_model=list[schemas.OutboxOut],
+    dependencies=[Depends(require_api_key)],
+)
+def list_outbox(
+    outbox_status: str | None = Query(default=None, alias="status"),
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    query = select(models.OutboxMessage).order_by(models.OutboxMessage.id.desc()).limit(limit)
+    if outbox_status:
+        query = query.where(models.OutboxMessage.status == outbox_status)
     return db.scalars(query).all()
