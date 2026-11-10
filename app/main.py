@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.database import Base, engine, get_db
+from app.outbox_worker import process_pending
 from app.security import require_api_key
 
 Base.metadata.create_all(bind=engine)
@@ -69,3 +70,8 @@ def list_outbox(
     if outbox_status:
         query = query.where(models.OutboxMessage.status == outbox_status)
     return db.scalars(query).all()
+
+
+@app.post("/outbox/process", dependencies=[Depends(require_api_key)])
+def process_outbox(db: Session = Depends(get_db)):
+    return process_pending(db)
